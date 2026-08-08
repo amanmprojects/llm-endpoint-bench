@@ -2,9 +2,10 @@
 import type { Endpoint, Usage, ToolCallInfo } from "../types.ts";
 import { resolveApiKey } from "../pricing.ts";
 import type { AbortSignalLike } from "./abort.ts";
-import { AbortError, isAborted, throwIfAborted } from "./abort.ts";
+import { AbortError, throwIfAborted } from "./abort.ts";
 import type { ChatMsg, LLMClient, StreamCallbacks, StreamRequest, StreamResult, ToolDef } from "./client.ts";
 import { withSystemMessage } from "./client.ts";
+import { normalizeFetchError, readErrorBody } from "./errors.ts";
 import { sseEvents, tryParseJson } from "./sse.ts";
 
 interface OpenAIToolCallDelta {
@@ -194,6 +195,20 @@ export class OpenAIClient implements LLMClient {
         ttftMs ??= performance.now() - started;
         callbacks.onFirstToken?.(ttftMs);
       }
+      const msgToolCalls = msg?.tool_calls;
+      if (msgToolCalls && msgToolCalls.length > 0) {
+        for (const tc of msgToolCalls) {
+          const call: ToolCallInfo = {
+            id: tc.id ?? "",
+            name: tc.function?.name ?? "",
+            input: tc.function?.arguments ?? "",
+          };
+          ttftMs ??= performance.now() - started;
+          callbacks.onFirstToken?.(ttftMs);
+          callbacks.onToolCall?.(call);
+          toolCalls.push(call);
+        }
+      }
       usage = chunkUsage(json) ?? { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
       stopReason = choice?.finish_reason ?? undefined;
       callbacks.onUsage?.(usage, stopReason);
@@ -280,22 +295,3 @@ export class OpenAIClient implements LLMClient {
   }
 }
 
-function normalizeFetchError(err: unknown): Error {
-  if (err instanceof DOMException && err.name === "AbortError") return new AbortError();
-  if (err instanceof Error) return err;
-  return new Error(String(err));
-}
-
-async function readErrorBody(response: Response): Promise<string> {
-  try {
-    const raw = await response.text();
-    const json = tryParseJson<{ error?: { message?: string } | string }>(raw);
-    if (json) {
-      if (typeof json.error === "string") return json.error;
-      if (json.error?.message) return json.error.message;
-    }
-    return raw.slice(0, 300);
-  } catch {
-    return "";
-  }
-}

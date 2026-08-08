@@ -11,15 +11,13 @@ function usageTokens(text: string): number {
 }
 
 function openaiChunk(delta: Record<string, unknown>, finish?: string): string {
-  const c: Record<string, unknown> = {
+  return `data: ${JSON.stringify({
     id: "chatcmpl-mock",
     object: "chat.completion.chunk",
     created: Date.now(),
     model: "mock-model",
     choices: [{ index: 0, delta, finish_reason: finish ?? null }],
-  };
-  if (finish) delete c.choices;
-  return `data: ${JSON.stringify(c)}\n\n`;
+  })}\n\n`;
 }
 
 const server = createServer((req, res) => {
@@ -63,7 +61,7 @@ const server = createServer((req, res) => {
           await delay(40);
           res.write(openaiChunk({ tool_calls: [{ index: 0, function: { arguments: '{"expression":"17*23"}' } }] }));
           await delay(60);
-          res.write(openaiChunk({ content: "", finish_reason: "tool_calls" }));
+          res.write(openaiChunk({}, "tool_calls"));
           res.write(`data: ${JSON.stringify({ id: "chatcmpl-mock", object: "chat.completion.chunk", created: Date.now(), model: "mock-model", choices: [], usage: { prompt_tokens: usageTokens("x".repeat(prompt)), completion_tokens: 8, total_tokens: 8 } })}\n\n`);
           res.write("data: [DONE]\n\n");
           res.end();
@@ -81,7 +79,7 @@ const server = createServer((req, res) => {
           res.write(openaiChunk({ content: w + " " }));
           await delay(30);
         }
-        res.write(openaiChunk({ content: "", finish_reason: "stop" }));
+        res.write(openaiChunk({}, "stop"));
         res.write(`data: ${JSON.stringify({ id: "chatcmpl-mock", object: "chat.completion.chunk", created: Date.now(), model: "mock-model", choices: [], usage: { prompt_tokens: usageTokens("x".repeat(prompt)), completion_tokens: Math.min(maxTokens, 20), total_tokens: Math.min(maxTokens, 20), prompt_tokens_details: { cached_tokens: 0 } } })}\n\n`);
         res.write("data: [DONE]\n\n");
         res.end();

@@ -56,8 +56,13 @@ export const PRICING_FIELDS = [
 ] as const;
 
 export function computeCost(pricing: Pricing, u: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number }): number {
+  // OpenAI & Anthropic report input_tokens as the TOTAL prompt including the cached
+  // portion (cache read/write are a subset). Don't charge the cached tokens twice:
+  // bill them only at their cache rates.
+  const cached = u.cacheReadTokens + u.cacheWriteTokens;
+  const inputTokens = cached <= u.inputTokens ? u.inputTokens - cached : u.inputTokens;
   return (
-    (u.inputTokens * pricing.input +
+    (inputTokens * pricing.input +
       u.outputTokens * pricing.output +
       u.cacheReadTokens * pricing.cacheRead +
       u.cacheWriteTokens * pricing.cacheWrite) /

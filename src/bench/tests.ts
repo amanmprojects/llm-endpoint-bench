@@ -85,7 +85,6 @@ async function runRequest(
     const now = performance.now();
     if (!force && now - lastEmit < (opts.throttleMs ?? 60)) return;
     lastEmit = now;
-    void phase;
     const elapsedMs = now - started;
     const estTokens = estimateTokens(text.length);
     const streamTime = ttftMs != null ? elapsedMs - ttftMs : 0;
@@ -278,7 +277,9 @@ export async function runCache(ctx: TestContext): Promise<TestResult> {
 
   const cacheWrite = warm.cacheWriteTokens || cold.cacheWriteTokens;
   const cacheRead = warm.cacheReadTokens;
-  const totalInput = warm.inputTokens + warm.cacheReadTokens + warm.cacheWriteTokens;
+  // inputTokens already includes the cached portion on OpenAI/Anthropic; be robust
+  // to providers that report uncached-only by never under-counting the prompt.
+  const totalInput = Math.max(warm.inputTokens, warm.cacheReadTokens + warm.cacheWriteTokens);
   const cacheSupported = cacheWrite > 0 || cacheRead > 0;
   const cacheReadPct = totalInput > 0 ? cacheRead / totalInput : 0;
 
@@ -440,6 +441,8 @@ export function runTest(kind: TestKind, ctx: TestContext): Promise<TestResult> {
       return runCache(ctx);
     case "toolcall":
       return runToolCall(ctx);
+    default:
+      throw new Error(`unknown test kind: ${String(kind)}`);
   }
 }
 

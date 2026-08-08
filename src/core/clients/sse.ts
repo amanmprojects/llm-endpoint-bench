@@ -37,14 +37,8 @@ export async function* sseEvents(
         if (line.endsWith("\r")) line = line.slice(0, -1);
 
         if (line === "") {
-          // Event boundary
-          if (eventName !== undefined || buffer.trim() !== "") {
-            // flush only if we have pending data; otherwise a blank line is a no-op
-          }
-          if (eventName !== undefined) {
-            yield { event: eventName, data: "" };
-            eventName = undefined;
-          }
+          // Event boundary — data was already yielded on its `data:` line.
+          eventName = undefined;
           continue;
         }
         if (line.startsWith(":")) continue; // comment

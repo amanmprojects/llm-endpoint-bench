@@ -109,7 +109,7 @@ export class LiveMetricsPanel {
       this.ttft.set("—", C.yellow);
     }
 
-    const tps = data.tokPerSec ?? (data.phase === "streaming" && data.ttftMs != null ? null : null);
+    const tps = data.tokPerSec;
     this.tps.set(tps != null ? `${fmtNum(tps, 1)}` : "—", C.green);
     if (tps != null) {
       this.samples.push(tps);

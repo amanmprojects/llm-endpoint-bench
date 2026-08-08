@@ -71,8 +71,6 @@ export interface LLMClient {
   stream(request: StreamRequest, callbacks?: StreamCallbacks, signal?: AbortSignalLike): Promise<StreamResult>;
 }
 
-export const DEFAULT_TEMPERATURE = 0.7;
-
 export const CALCULATOR_TOOL: ToolDef = {
   name: "calculator",
   description: "Evaluate a simple arithmetic expression such as '17*23' or '(12+8)/5'. Supports + - * / and parentheses.",

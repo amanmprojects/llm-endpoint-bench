@@ -79,34 +79,38 @@ export class BenchmarkRunScreen extends BaseScreen {
   }
 
   private async run(): Promise<void> {
-    const results = await runBenchmarks({
-      endpoint: this.endpoint,
-      kinds: this.kinds,
-      iterations: this.iterations,
-      signal: this.abortController.signal,
-      onProgress: (p) => {
-        if (this.finished) return;
-        this.renderProgress(p);
-      },
-    });
-    if (this.finished) return;
-    this.finished = true;
-    this.app.busy = false;
-    // Persist the run for later browsing (even partial/aborted runs).
-    if (results.length > 0) {
-      this.app.saveRun({
-        endpointId: this.endpoint.id,
-        endpointLabel: this.endpoint.name,
-        provider: this.endpoint.provider,
-        model: this.endpoint.model,
-        baseUrl: this.endpoint.baseUrl,
+    this.app.busy = true;
+    try {
+      const results = await runBenchmarks({
+        endpoint: this.endpoint,
         kinds: this.kinds,
         iterations: this.iterations,
-        results,
-        totalCost: results.reduce((s, r) => s + r.totalCost, 0),
+        signal: this.abortController.signal,
+        onProgress: (p) => {
+          if (this.finished) return;
+          this.renderProgress(p);
+        },
       });
+      if (this.finished) return;
+      this.finished = true;
+      // Persist the run for later browsing (even partial/aborted runs).
+      if (results.length > 0) {
+        this.app.saveRun({
+          endpointId: this.endpoint.id,
+          endpointLabel: this.endpoint.name,
+          provider: this.endpoint.provider,
+          model: this.endpoint.model,
+          baseUrl: this.endpoint.baseUrl,
+          kinds: this.kinds,
+          iterations: this.iterations,
+          results,
+          totalCost: results.reduce((s, r) => s + r.totalCost, 0),
+        });
+      }
+      this.app.openResults(this.endpoint.id, results);
+    } finally {
+      this.app.busy = false;
     }
-    this.app.openResults(this.endpoint.id, results);
   }
 
   private renderProgress(p: BenchProgress): void {

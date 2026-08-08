@@ -154,12 +154,14 @@ export class ResultsScreen extends BaseScreen {
     switch (key.name) {
       case "up":
       case "k":
+        if (this.results.length === 0) break;
         this.cursor = (this.cursor - 1 + this.results.length) % this.results.length;
         this.renderTable();
         this.renderDetail();
         break;
       case "down":
       case "j":
+        if (this.results.length === 0) break;
         this.cursor = (this.cursor + 1) % this.results.length;
         this.renderTable();
         this.renderDetail();

@@ -590,7 +590,7 @@ export class ChatScreen extends BaseScreen {
 
   private renderSession(): void {
     const u = this.sessionUsage;
-    const totalIn = u.inputTokens + u.cacheReadTokens + u.cacheWriteTokens;
+    const totalIn = Math.max(u.inputTokens, u.cacheReadTokens + u.cacheWriteTokens);
     const cachePct = totalIn > 0 ? u.cacheReadTokens / totalIn : 0;
     const thinking = this.sessionReasoningChars > 0 ? fmtNum(Math.ceil(this.sessionReasoningChars / 4), 0) : null;
     this.sessionText.content =

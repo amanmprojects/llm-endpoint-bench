@@ -5,6 +5,7 @@ import type { AbortSignalLike } from "./abort.ts";
 import { AbortError, throwIfAborted } from "./abort.ts";
 import type { ChatMsg, LLMClient, StreamCallbacks, StreamRequest, StreamResult, ToolDef } from "./client.ts";
 import { sseEvents, tryParseJson } from "./sse.ts";
+import { normalizeFetchError, readErrorBody } from "./errors.ts";
 
 interface AnthropicUsage {
   input_tokens?: number;
@@ -43,7 +44,7 @@ function buildUrl(endpoint: Endpoint): string {
 }
 
 type Block =
-  | { type: "text"; text: string }
+  | { type: "text"; text: string; cache_control?: { type: "ephemeral" } }
   | { type: "tool_use"; id: string; name: string; input: Record<string, unknown> }
   | { type: "tool_result"; tool_use_id: string; content: string };
 
@@ -66,7 +67,7 @@ function toBlocks(m: ChatMsg, useCache: boolean, isLastUser: boolean): Block[] {
   }
   const block: Block = { type: "text", text: m.content };
   if (useCache && isLastUser && m.role === "user") {
-    return [{ ...block, type: "text", text: m.content }];
+    block.cache_control = { type: "ephemeral" };
   }
   return [block];
 }
@@ -342,22 +343,3 @@ export class AnthropicClient implements LLMClient {
   }
 }
 
-function normalizeFetchError(err: unknown): Error {
-  if (err instanceof DOMException && err.name === "AbortError") return new AbortError();
-  if (err instanceof Error) return err;
-  return new Error(String(err));
-}
-
-async function readErrorBody(response: Response): Promise<string> {
-  try {
-    const raw = await response.text();
-    const json = tryParseJson<{ error?: { message?: string } | string }>(raw);
-    if (json) {
-      if (typeof json.error === "string") return json.error;
-      if (json.error?.message) return json.error.message;
-    }
-    return raw.slice(0, 300);
-  } catch {
-    return "";
-  }
-}

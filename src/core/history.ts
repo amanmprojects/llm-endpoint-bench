@@ -1,5 +1,6 @@
 // Persistent benchmark run history.
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import type { TestKind, TestResult } from "./types.ts";
 import { uuid } from "./format.ts";
@@ -25,7 +26,7 @@ export class HistoryStore {
   path = "";
 
   constructor() {
-    const dir = process.env.LLM_BENCH_CONFIG_DIR ?? join(process.env.HOME ?? "", ".llm-bench");
+    const dir = process.env.LLM_BENCH_CONFIG_DIR ?? join(homedir(), ".llm-bench");
     this.path = join(dir, "history.json");
   }
 

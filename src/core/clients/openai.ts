@@ -15,6 +15,20 @@ interface OpenAIToolCallDelta {
   function?: { name?: string; arguments?: string };
 }
 
+/** Append a tool-call name fragment, ignoring fragments already present (some providers resend full names). */
+function accumulateName(existing: string, frag: string): string {
+  if (!frag) return existing;
+  if (!existing) return frag;
+  return existing.includes(frag) ? existing : existing + frag;
+}
+
+/** Derive a numeric accumulator slot from a tool-call id (e.g. "call_0abc" -> 0), else null. */
+function slotFromId(id: string | undefined): number | null {
+  if (!id) return null;
+  const m = id.match(/\d+/);
+  return m ? Number(m[0]) : null;
+}
+
 interface OpenAIStreamChunk {
   choices?: Array<{
     delta?: {
@@ -138,8 +152,10 @@ export class OpenAIClient implements LLMClient {
     let text = "";
     let reasoningText = "";
     const toolCalls: ToolCallInfo[] = [];
-    // index -> accumulated tool call
+    // index -> accumulated tool call (keyed by delta index, or a derived id slot)
     const toolAcc: Record<number, { id: string; name: string; args: string }> = {};
+    const seenMsgCalls = new Set<string>();
+    let toolSlot = 0;
     let usage: Usage | null = null;
     let stopReason: string | undefined;
 
@@ -216,6 +232,21 @@ export class OpenAIClient implements LLMClient {
       return finalize();
     }
 
+    // Merge a tool-call fragment (stream delta or full message call) into its slot.
+    const feedToolCall = (tc: { id?: string; function?: { name?: string; arguments?: string } }, idx: number): void => {
+      const acc = (toolAcc[idx] ??= { id: "", name: "", args: "" });
+      if (tc.id) acc.id = tc.id;
+      if (tc.function?.name) acc.name = accumulateName(acc.name, tc.function.name);
+      if (tc.function?.arguments) acc.args += tc.function.arguments;
+      if (acc.id || acc.name || acc.args) {
+        if (ttftMs === null) {
+          ttftMs = performance.now() - started;
+          callbacks.onFirstToken?.(ttftMs);
+        }
+        callbacks.onToolCall?.({ id: acc.id, name: acc.name, input: acc.args });
+      }
+    };
+
     try {
       for await (const ev of sseEvents(response.body, signal)) {
         throwIfAborted(signal);
@@ -243,19 +274,14 @@ export class OpenAIClient implements LLMClient {
             callbacks.onReasoningDelta?.(delta.reasoning_content);
           }
           if (delta.tool_calls) {
-            for (const tc of delta.tool_calls) {
-              const idx = tc.index ?? 0;
-              const acc = (toolAcc[idx] ??= { id: "", name: "", args: "" });
-              if (tc.id) acc.id = tc.id;
-              if (tc.function?.name) acc.name += tc.function.name;
-              if (tc.function?.arguments) acc.args += tc.function.arguments;
-              if (acc.id || acc.name || acc.args) {
-                if (ttftMs === null) {
-                  ttftMs = performance.now() - started;
-                  callbacks.onFirstToken?.(ttftMs);
-                }
-                callbacks.onToolCall?.({ id: acc.id, name: acc.name, input: acc.args });
-              }
+            for (const tc of delta.tool_calls) feedToolCall(tc, tc.index ?? 0);
+          }
+          if (choice.message?.tool_calls) {
+            for (const tc of choice.message.tool_calls) {
+              if (tc.id && seenMsgCalls.has(tc.id)) continue;
+              if (tc.id) seenMsgCalls.add(tc.id);
+              const idx = slotFromId(tc.id) ?? toolSlot++;
+              feedToolCall(tc, idx);
             }
           }
           if (choice.finish_reason) stopReason = choice.finish_reason;

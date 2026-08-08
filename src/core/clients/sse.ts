@@ -8,7 +8,8 @@ export interface SSEEvent {
 
 /**
  * Parse an SSE stream from a web ReadableStream.
- * Yields one object per event. Handles CRLF, multi-line data and [DONE].
+ * Yields one object per event, joining multi-line `data:` fields with "\n"
+ * per the SSE spec. Handles CRLF and [DONE].
  */
 export async function* sseEvents(
   body: ReadableStream<Uint8Array>,
@@ -18,11 +19,19 @@ export async function* sseEvents(
   const decoder = new TextDecoder();
   let buffer = "";
   let eventName: string | undefined;
+  let dataLines: string[] = [];
 
   const abortListener = () => {
     reader.cancel().catch(() => {});
   };
   signal?.addEventListener("abort", abortListener);
+
+  const flushEvent = (): string | null => {
+    if (dataLines.length === 0) return null;
+    const data = dataLines.join("\n");
+    dataLines = [];
+    return data;
+  };
 
   try {
     for (;;) {
@@ -37,8 +46,11 @@ export async function* sseEvents(
         if (line.endsWith("\r")) line = line.slice(0, -1);
 
         if (line === "") {
-          // Event boundary — data was already yielded on its `data:` line.
+          // Event boundary — flush any accumulated data lines.
+          const name = eventName;
           eventName = undefined;
+          const data = flushEvent();
+          if (data) yield { event: name, data };
           continue;
         }
         if (line.startsWith(":")) continue; // comment
@@ -47,20 +59,18 @@ export async function* sseEvents(
           continue;
         }
         if (line.startsWith("data:")) {
-          const data = line.slice(5).trim();
-          if (data) yield { event: eventName, data };
+          dataLines.push(line.slice(5).replace(/^ /, ""));
+          continue;
         }
       }
     }
 
-    // Flush trailing data after stream end
-    if (buffer.trim()) {
-      const trimmed = buffer.trim();
-      if (trimmed.startsWith("data:")) {
-        const data = trimmed.slice(5).trim();
-        if (data) yield { event: eventName, data };
-      }
+    // Flush trailing data after stream end.
+    if (buffer.trim().startsWith("data:")) {
+      dataLines.push(buffer.trim().slice(5).replace(/^ /, ""));
     }
+    const trailing = flushEvent();
+    if (trailing) yield { event: eventName, data: trailing };
   } finally {
     signal?.removeEventListener("abort", abortListener);
     try {

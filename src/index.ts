@@ -65,7 +65,12 @@ async function headless(config: ConfigStore, args: Record<string, string | boole
   const endpoint = endpoints.find((e) => e.id === idArg || e.name === idArg) ?? endpoints[0]!;
   const testsArg = typeof args["tests"] === "string" ? args["tests"] : "ttft";
   const VALID_KINDS: TestKind[] = ["ttft", "throughput", "cache", "toolcall"];
-  const kinds = testsArg.split(",").map((s) => s.trim()).filter((s): s is TestKind => (VALID_KINDS as string[]).includes(s));
+  const requested = testsArg.split(",").map((s) => s.trim()).filter(Boolean);
+  const kinds = requested.filter((s): s is TestKind => (VALID_KINDS as string[]).includes(s));
+  const dropped = requested.filter((s) => !(VALID_KINDS as string[]).includes(s));
+  if (dropped.length > 0) {
+    console.error(`Ignoring unknown tests: ${dropped.join(", ")}. Valid: ${VALID_KINDS.join(", ")}`);
+  }
   if (kinds.length === 0) {
     console.error(`No valid tests in --tests "${testsArg}". Valid: ${VALID_KINDS.join(", ")}`);
     process.exit(1);
